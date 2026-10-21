@@ -1,0 +1,15 @@
+name: Works on my stick
+description: Add a tested device to the README
+labels: [device]
+body:
+  - type: input
+    id: device
+    attributes:
+      label: Stick model, codename and Fire OS version
+      placeholder: Fire TV Stick Lite (AFTSS), Fire OS 7.6.x
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Home speed (`bash firetv.sh gaptest`) and anything that needed changing

@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Fire OS 8 sticks
+    url: https://github.com/ivantrj/firetv-glass-launcher
+    about: Clean Glass targets Fire OS 7. For Fire OS 8, use upstream Fire TV Glass.

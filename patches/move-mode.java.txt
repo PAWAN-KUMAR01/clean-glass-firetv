@@ -1,0 +1,139 @@
+    // ---------------------------------------------------------------- move mode (Menu > Move, like Amazon's home)
+
+    private static final String MOVE_ACTION = "com.ivantrj.glasslauncher.MOVE";
+    private boolean moving;
+    private List<AppInfo> moveUndoDock, moveUndoGrid;
+    private int moveUndoZone, moveUndoDockIdx, moveUndoGridIdx;
+
+    /** Menu on a tile: Move or App info, shown next to the tile. */
+    private void openTileMenu() {
+        AppInfo app = focusedApp();
+        if (app == null) return;
+        List<InputsMenu.Entry> entries = new ArrayList<>();
+        entries.add(new InputsMenu.Entry("Move", new Intent(MOVE_ACTION)));
+        entries.add(new InputsMenu.Entry("App info", new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.fromParts("package", app.packageName, null))));
+        openMenu(entries);
+        placeMenuNear(focusedTileView());
+    }
+
+    private View focusedTileView() {
+        if (zone == DOCK && dockIdx < dockRow.getChildCount()) return dockRow.getChildAt(dockIdx);
+        if (zone == GRID) {
+            RecyclerView.ViewHolder holder = grid.findViewHolderForAdapterPosition(gridIdx);
+            if (holder != null) return holder.itemView;
+        }
+        return null;
+    }
+
+    private void placeMenuNear(View tile) {
+        if (tile == null) return;
+        int[] loc = new int[2];
+        tile.getLocationInWindow(loc);
+        inputsMenu.animate().cancel();
+        float x = Math.min(loc[0], root.getWidth() - inputsMenu.getMeasuredWidth() - dp(24));
+        float y = Math.min(loc[1] + tile.getHeight() + dp(4), root.getHeight() - inputsMenu.getMeasuredHeight() - dp(24));
+        inputsMenu.setX(Math.max(dp(24), x));
+        inputsMenu.setY(Math.max(dp(24), y));
+        inputsMenu.setAlpha(1f);
+    }
+
+    private void startMove() {
+        AppInfo app = focusedApp();
+        if (app == null) return;
+        moving = true;
+        moveUndoDock = new ArrayList<>(dockApps);
+        moveUndoGrid = new ArrayList<>(gridApps);
+        moveUndoZone = zone;
+        moveUndoDockIdx = dockIdx;
+        moveUndoGridIdx = gridIdx;
+        Toast.makeText(this, "Moving " + app.label + ": arrows to move, OK to place, Back to cancel", Toast.LENGTH_LONG).show();
+    }
+
+    private void moveKey(int key) {
+        switch (key) {
+            case KeyEvent.KEYCODE_DPAD_LEFT: shiftTile(0, -1); break;
+            case KeyEvent.KEYCODE_DPAD_RIGHT: shiftTile(0, 1); break;
+            case KeyEvent.KEYCODE_DPAD_UP: shiftTile(-1, 0); break;
+            case KeyEvent.KEYCODE_DPAD_DOWN: shiftTile(1, 0); break;
+            case KeyEvent.KEYCODE_BACK: endMove(false); break;
+            default: endMove(true); break; // OK, Enter or Menu places it
+        }
+    }
+
+    /** Swaps the moving tile with its neighbour in that direction; the dock keeps its size. */
+    private void shiftTile(int dRow, int dCol) {
+        if (zone == DOCK) {
+            if (dCol != 0) {
+                int to = dockIdx + dCol;
+                if (to < 0 || to >= dockApps.size()) return;
+                java.util.Collections.swap(dockApps, dockIdx, to);
+                dockIdx = to;
+            } else if (dRow > 0 && !gridApps.isEmpty()) {
+                int to = Math.min(dockIdx, gridApps.size() - 1);
+                AppInfo moved = dockApps.get(dockIdx);
+                dockApps.set(dockIdx, gridApps.get(to));
+                gridApps.set(to, moved);
+                zone = GRID;
+                gridIdx = to;
+            } else {
+                return;
+            }
+        } else if (zone == GRID) {
+            if (dCol != 0) {
+                boolean atLeft = gridIdx == 0;                       // wraps to the previous row
+                boolean atRight = gridIdx + 1 >= gridApps.size();    // wraps to the next row
+                if ((dCol < 0 && atLeft) || (dCol > 0 && atRight)) return;
+                int to = gridIdx + dCol;
+                java.util.Collections.swap(gridApps, gridIdx, to);
+                gridIdx = to;
+            } else if (dRow < 0 && gridIdx < COLUMNS) {
+                if (dockApps.isEmpty()) return;
+                int to = Math.min(gridIdx % COLUMNS, dockApps.size() - 1);
+                AppInfo moved = gridApps.get(gridIdx);
+                gridApps.set(gridIdx, dockApps.get(to));
+                dockApps.set(to, moved);
+                zone = DOCK;
+                dockIdx = to;
+            } else {
+                int to = gridIdx + dRow * COLUMNS;
+                if (to < 0 || to >= gridApps.size()) return;
+                java.util.Collections.swap(gridApps, gridIdx, to);
+                gridIdx = to;
+            }
+        } else {
+            return;
+        }
+        redrawTiles();
+        afterLayout(() -> applyFocus(true));
+    }
+
+    private void redrawTiles() {
+        dockRow.removeAllViews();
+        LayoutInflater inflater = LayoutInflater.from(this);
+        for (AppInfo app : dockApps) {
+            View cell = inflater.inflate(R.layout.item_tile, dockRow, false);
+            Tiles.bind(cell, app);
+            dockRow.addView(cell);
+        }
+        adapter.setApps(gridApps);
+    }
+
+    private void endMove(boolean keep) {
+        moving = false;
+        if (!keep) {
+            dockApps.clear();
+            dockApps.addAll(moveUndoDock);
+            gridApps = new ArrayList<>(moveUndoGrid);
+            zone = moveUndoZone;
+            dockIdx = moveUndoDockIdx;
+            gridIdx = moveUndoGridIdx;
+            redrawTiles();
+            afterLayout(() -> applyFocus(true));
+            return;
+        }
+        GlassOrder.save(this, dockApps, gridApps);
+        loadedConfigStamp = configStamp(); // our own save: no need to reload
+        Toast.makeText(this, "Placed", Toast.LENGTH_SHORT).show();
+    }
+

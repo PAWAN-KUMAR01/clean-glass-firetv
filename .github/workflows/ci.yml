@@ -1,0 +1,23 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shell syntax
+        run: bash -n firetv.sh
+      - name: ShellCheck (errors)
+        run: shellcheck -S error firetv.sh
+      - name: Python
+        run: python3 -m py_compile tools/gapsummary.py
+      - name: Patches apply to the pinned Glass commit
+        run: |
+          GLASS_COMMIT=$(grep -o 'GLASS_COMMIT="[0-9a-f]*"' firetv.sh | cut -d'"' -f2)
+          git clone -q https://github.com/ivantrj/firetv-glass-launcher.git firetv-glass-launcher
+          git -C firetv-glass-launcher checkout -q "$GLASS_COMMIT"
+          mkdir -p firetv-glass-launcher/.venv/bin && ln -s "$(command -v python3)" firetv-glass-launcher/.venv/bin/python
+          sed -i "s/sed -i '' /sed -i /" firetv.sh
+          bash -c 'source ./firetv.sh >/dev/null; apply_patches'
+          grep -q "openMenu(SettingsMenu.load(this))" firetv-glass-launcher/launcher/app/src/main/java/com/ivantrj/glasslauncher/HomeActivity.java
+          grep -q "minSdk 28" firetv-glass-launcher/launcher/app/build.gradle

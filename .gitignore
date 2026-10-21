@@ -1,0 +1,7 @@
+# Fetched or created by setup / install
+firetv-glass-launcher/
+android-sdk/
+backup/
+gradle-*.zip
+__pycache__/
+.DS_Store
